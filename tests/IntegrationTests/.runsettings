@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <!--
+    Los proyectos de integration tests levantan contenedores reales de SQL Server
+    y RabbitMQ vía Testcontainers. Corriendo "dotnet test" sobre toda la solución,
+    cada proyecto de test se ejecuta en su propio proceso, en paralelo entre sí por
+    defecto: con ~7 proyectos de integration tests eso son más de 10 contenedores
+    arrancando al mismo tiempo, lo que satura Docker en una máquina de desarrollo
+    normal y produce fallos por timeout que no son bugs reales (cada proyecto pasa
+    siempre en soledad). Correr los proyectos de a uno lo hace 100% confiable a
+    costa de un poco más de tiempo total.
+
+    Uso: dotnet test, pasando este archivo con la opción "settings" del comando.
+  -->
+  <RunConfiguration>
+    <MaxCpuCount>1</MaxCpuCount>
+  </RunConfiguration>
+</RunSettings>

@@ -1,0 +1,143 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: ecommerce-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Your_password123"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"Your_password123\" -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: ecommerce-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  identity-api:
+    build:
+      context: .
+      dockerfile: src/services/Identity/Identity.Api/Dockerfile
+    container_name: ecommerce-identity-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+    ports:
+      - "5087:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+
+  catalog-api:
+    build:
+      context: .
+      dockerfile: src/services/Catalog/Catalog.Api/Dockerfile
+    container_name: ecommerce-catalog-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+    ports:
+      - "5088:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+
+  orders-api:
+    build:
+      context: .
+      dockerfile: src/services/Orders/Orders.Api/Dockerfile
+    container_name: ecommerce-orders-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+    ports:
+      - "5089:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  inventory-api:
+    build:
+      context: .
+      dockerfile: src/services/Inventory/Inventory.Api/Dockerfile
+    container_name: ecommerce-inventory-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+    ports:
+      - "5090:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  payments-api:
+    build:
+      context: .
+      dockerfile: src/services/Payments/Payments.Api/Dockerfile
+    container_name: ecommerce-payments-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+    ports:
+      - "5091:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  notifications-api:
+    build:
+      context: .
+      dockerfile: src/services/Notifications/Notifications.Api/Dockerfile
+    container_name: ecommerce-notifications-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+    ports:
+      - "5092:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  gateway-api:
+    build:
+      context: .
+      dockerfile: src/services/Gateway/Gateway.Api/Dockerfile
+    container_name: ecommerce-gateway-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+    ports:
+      - "5080:8080"
+    depends_on:
+      - identity-api
+      - catalog-api
+      - orders-api
+      - inventory-api
+      - payments-api
+      - notifications-api
+
+volumes:
+  sqlserver-data:
