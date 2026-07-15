@@ -26,7 +26,10 @@ resolvieron).
 7. [Dockerizando todo el stack](#7-dockerizando-todo-el-stack)
 8. [Pruebas unitarias](#8-pruebas-unitarias)
 9. [Pruebas de integración con Testcontainers](#9-pruebas-de-integración-con-testcontainers)
-10. [Cómo seguir desde acá](#10-cómo-seguir-desde-acá)
+10. [Outbox pattern: escritura y publicación atómicas](#10-outbox-pattern-escritura-y-publicación-atómicas)
+11. [Resiliencia: retry y circuit breaker](#11-resiliencia-retry-y-circuit-breaker)
+12. [Observabilidad: OpenTelemetry y Jaeger](#12-observabilidad-opentelemetry-y-jaeger)
+13. [Cómo seguir desde acá](#13-cómo-seguir-desde-acá)
 
 ---
 
@@ -579,16 +582,252 @@ ejecución secuencial:
 dotnet test --settings tests/IntegrationTests/.runsettings
 ```
 
-## 10. Cómo seguir desde acá
+## 10. Outbox pattern: escritura y publicación atómicas
+
+Hasta acá, cada handler que publica un evento hace dos pasos separados: confirma la
+escritura en base de datos (`unitOfWork.SaveChangesAsync()`) y recién después publica el
+evento (`eventPublisher.PublishAsync(...)`, que en definitiva llama a
+`IPublishEndpoint.Publish`). Si el proceso se cae justo entre medio, el evento se pierde (o
+se duplica, según el punto exacto de la caída) — rompiendo la consistencia de la saga.
+
+MassTransit trae soporte nativo para el Outbox pattern sobre EF Core, y hay que elegir entre
+dos variantes según **quién dispara la publicación**:
+
+- **Bus Outbox** (`o.UseBusOutbox()`): para publicaciones que salen de *fuera* de un
+  consumer — el único caso acá es `CreateOrder`, disparado directo desde el endpoint HTTP de
+  Orders.
+- **Outbox transaccional de consumer** (`cfg.UseEntityFrameworkOutbox<TDbContext>(context)`
+  aplicado a cada `ReceiveEndpoint`): envuelve el procesamiento del consumer en una
+  transacción, guarda el evento saliente junto con el `SaveChanges` del handler, y agrega
+  deduplicación de entrada (tabla `InboxState`). Aplica a todo lo demás — `ConfirmOrder`,
+  `CancelOrder`, `ReserveStock`, `ProcessPayment` — porque todos esos handlers se disparan
+  desde un consumer, no desde HTTP.
+
+```bash
+dotnet add Orders.Infrastructure package MassTransit.EntityFrameworkCore -v 8.4.1
+```
+
+En el `DbContext` hace falta registrar las tres entidades del outbox:
+
+```csharp
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    modelBuilder.ApplyConfigurationsFromAssembly(typeof(OrdersDbContext).Assembly);
+    modelBuilder.AddInboxStateEntity();
+    modelBuilder.AddOutboxMessageEntity();
+    modelBuilder.AddOutboxStateEntity();
+}
+```
+
+Y en la configuración de MassTransit, Orders necesita ambas variantes (tiene un publish
+HTTP-triggered y publishes consumer-triggered), mientras que Inventory y Payments solo
+necesitan la del consumer:
+
+```csharp
+x.AddEntityFrameworkOutbox<OrdersDbContext>(o =>
+{
+    o.UseSqlServer();
+    o.UseBusOutbox();
+});
+
+x.UsingRabbitMq((context, cfg) =>
+{
+    cfg.Host(/* ... */);
+
+    cfg.ReceiveEndpoint("orders-payment-completed", e =>
+    {
+        e.UseEntityFrameworkOutbox<OrdersDbContext>(context);
+        e.ConfigureConsumer<PaymentCompletedConsumer>(context);
+    });
+});
+```
+
+El detalle que rompe todo si se pasa por alto: el Bus Outbox bufferea la publicación en el
+`DbContext` ambiente, pero recién la vuelca a la tabla `OutboxMessage` en el próximo
+`SaveChangesAsync`. Eso obliga a **publicar antes de guardar**, no después:
+
+```csharp
+await orderRepository.AddAsync(order, cancellationToken);
+
+// El evento se publica antes de SaveChanges para que el outbox lo bufferee
+// y lo persista de forma atómica junto con el write model.
+await eventPublisher.PublishAsync(new OrderCreatedEvent(/* ... */), cancellationToken);
+await unitOfWork.SaveChangesAsync(cancellationToken);
+```
+
+Con el modelo cambiado, hace falta una migración nueva por servicio (crea las tablas
+`InboxState`, `OutboxMessage` y `OutboxState`):
+
+```bash
+dotnet ef migrations add AddOutbox \
+  --project src/services/Orders/Orders.Infrastructure \
+  --startup-project src/services/Orders/Orders.Api
+```
+
+## 11. Resiliencia: retry y circuit breaker
+
+Acá aparece una premisa que no encaja con el código tal como está: "agregar circuit breaker
+en las llamadas HTTP entre servicios" no aplica directamente, porque **no hay HTTP síncrono
+entre microservicios** — todo el tráfico entre Orders/Inventory/Payments/Notifications es
+mensajería. Y la pasarela de pago simulada tampoco hacía ninguna llamada de red: era un
+método síncrono que solo comparaba el monto contra un umbral. Antes de poder agregar
+resiliencia hay que decidir qué significa "resiliencia" en cada uno de esos dos casos.
+
+**Entre servicios**, el equivalente real de retry/circuit breaker es el que trae
+MassTransit para sus consumers, agregado a nivel de bus (antes de los `ReceiveEndpoint`, así
+envuelve todo el pipeline de cada consumer, outbox incluido):
+
+```csharp
+cfg.UseMessageRetry(r => r.Exponential(
+    retryLimit: 3,
+    minInterval: TimeSpan.FromMilliseconds(200),
+    maxInterval: TimeSpan.FromSeconds(5),
+    intervalDelta: TimeSpan.FromMilliseconds(200)));
+
+cfg.UseCircuitBreaker(cb =>
+{
+    cb.TrackingPeriod = TimeSpan.FromMinutes(1);
+    cb.TripThreshold = 15;
+    cb.ActiveThreshold = 10;
+    cb.ResetInterval = TimeSpan.FromMinutes(5);
+});
+```
+
+Tras agotar los reintentos, MassTransit mueve el mensaje a su cola `_error` — comportamiento
+estándar, sin configuración adicional. No hay riesgo nuevo de duplicados: los handlers ya
+eran idempotentes desde la sección 5, y el `InboxState` del outbox suma deduplicación extra.
+
+**Hacia la pasarela de pago**, en cambio, sí tiene sentido un `HttpClient` real con Polly —
+pero primero hay que convertir la pasarela simulada en una llamada HTTP de verdad. Se agrega
+un endpoint interno en `Payments.Api` que simula latencia y una tasa de falla transitoria, y
+`IPaymentGateway` pasa a ser async:
+
+```csharp
+gateway.MapPost("/charge", async (GatewayChargeRequest request) =>
+{
+    await Task.Delay(Random.Shared.Next(50, 250));       // latencia simulada
+    if (Random.Shared.NextDouble() < 0.2)                // ~20% falla transitoria
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+
+    var result = SimulatedGatewayBackend.Charge(request.OrderId, request.Amount);
+    return Results.Ok(new GatewayChargeResponse(result.Success, result.FailureReason));
+});
+```
+
+El cliente que lo llama se registra con `AddStandardResilienceHandler()` — la API estándar
+de .NET 8 para esto (paquete `Microsoft.Extensions.Http.Resilience`, Polly v8 por debajo),
+que agrega retry con backoff exponencial, circuit breaker y timeout sin tener que componer
+la pipeline a mano:
+
+```bash
+dotnet add Payments.Infrastructure package Microsoft.Extensions.Http.Resilience
+```
+
+```csharp
+services.AddHttpClient<IPaymentGateway, HttpPaymentGateway>(client =>
+{
+    client.BaseAddress = new Uri(configuration["PaymentGateway:BaseUrl"]!);
+})
+.AddStandardResilienceHandler();
+```
+
+El punto que hace que esto sea correcto y no solo "reintentar todo": `HttpPaymentGateway`
+llama a `response.EnsureSuccessStatusCode()` antes de leer el resultado. Un 503 simulado
+(falla transitoria) lanza `HttpRequestException`, que Polly reintenta; un 200 OK con
+`success:false` (el pago se rechazó porque el monto supera el umbral) **no** se reintenta —
+es una decisión de negocio legítima, no una falla.
+
+## 12. Observabilidad: OpenTelemetry y Jaeger
+
+Con outbox y resiliencia en su lugar, falta poder *ver* el recorrido de un pedido a través
+de los 5 servicios que toca la saga (Gateway, Orders, Inventory, Payments, Notifications).
+Como el cableado es casi idéntico en los cinco (con dos variantes: con/sin EF Core, con/sin
+MassTransit), se centraliza en un proyecto compartido nuevo — mismo criterio que
+`ECommerce.Contracts` en la sección 2 — en vez de repetir el boilerplate en cada `Program.cs`:
+
+```bash
+cd src/shared
+dotnet new classlib -n ECommerce.Observability -f net8.0
+cd ../..
+dotnet sln add src/shared/ECommerce.Observability/ECommerce.Observability.csproj
+```
+
+```csharp
+public static class ObservabilityExtensions
+{
+    public static WebApplicationBuilder AddOpenTelemetryTracing(
+        this WebApplicationBuilder builder,
+        string serviceName,
+        bool includeEfCore = true,
+        bool includeMassTransit = true)
+    {
+        var otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"] ?? "http://localhost:4317";
+
+        builder.Services.AddOpenTelemetry()
+            .ConfigureResource(r => r.AddService(serviceName))
+            .WithTracing(tracing =>
+            {
+                tracing.AddAspNetCoreInstrumentation();
+                tracing.AddHttpClientInstrumentation();
+                if (includeEfCore) tracing.AddEntityFrameworkCoreInstrumentation();
+                if (includeMassTransit) tracing.AddSource("MassTransit");
+                tracing.AddOtlpExporter(o => o.Endpoint = new Uri(otlpEndpoint));
+            });
+
+        return builder;
+    }
+}
+```
+
+Cada `Program.cs` queda en una sola línea, justo después de crear el `builder`:
+
+```csharp
+builder.AddOpenTelemetryTracing("orders-api");
+```
+
+(Gateway, sin EF Core ni MassTransit propios, la llama con
+`includeEfCore: false, includeMassTransit: false` — solo instrumenta ASP.NET Core y el
+`HttpClient` que usa YARP para reenviar hacia los demás servicios.)
+
+El punto que hace que esto conecte los 5 servicios en un único trace, sin escribir código de
+correlación a mano: MassTransit 8.x ya trae su propio `ActivitySource` (literalmente
+`"MassTransit"`) que propaga el contexto de traza W3C (`traceparent`) por los headers del
+mensaje — alcanza con registrarlo (`tracing.AddSource("MassTransit")`). Lo mismo pasa con el
+salto Gateway→Orders vía YARP: la propagación W3C es una capacidad nativa de
+`HttpClient`/`SocketsHttpHandler` desde .NET 5+, automática en cuanto hay un `Activity`
+ambiente.
+
+Por último, Jaeger se suma a `docker-compose.yml` como un contenedor más (acepta OTLP
+nativamente, sin necesitar un collector intermedio):
+
+```yaml
+jaeger:
+  image: jaegertracing/all-in-one:1.76.0
+  ports:
+    - "16686:16686" # UI
+    - "4317:4317"   # OTLP gRPC
+    - "4318:4318"   # OTLP HTTP
+  environment:
+    COLLECTOR_OTLP_ENABLED: "true"
+```
+
+Con el stack arriba, un pedido creado a través del Gateway (`http://localhost:5080`) se
+puede buscar en `http://localhost:16686`: un único trace conecta la entrada HTTP en el
+Gateway, cada publish/consume de RabbitMQ (incluido el outbox) y la llamada HTTP a la
+pasarela de pago — con el reintento de Polly visible como un span propio cuando la pasarela
+simulada devuelve una falla transitoria.
+
+## 13. Cómo seguir desde acá
 
 Ideas para extender el proyecto en la misma línea:
 
-- **Outbox pattern** en los servicios que publican eventos, para garantizar que la
-  escritura en base de datos y la publicación del evento sean atómicas (hoy son dos pasos
-  separados).
-- **Circuit breaker / reintentos** (Polly) en las llamadas HTTP entre servicios y hacia la
-  pasarela de pago simulada.
-- **Observabilidad**: OpenTelemetry + un colector (Jaeger/Seq) para trazar un pedido a
-  través de los 5 servicios que toca durante la saga.
+- **Logs estructurados correlacionados**: Seq (o similar), con el trace ID de OpenTelemetry
+  como campo común, para saltar de una traza en Jaeger a sus logs exactos y viceversa.
+- **Sampling de trazas**: hoy se exporta el 100% del tráfico, razonable para una demo pero
+  no para producción — vale la pena introducir tail-based sampling antes de llevar esto más
+  lejos.
+- **Chaos testing del circuit breaker**: un test que fuerce una tasa de falla del 100% en la
+  pasarela simulada y verifique que el circuito de Polly efectivamente abre y deja de
+  golpearla, en vez de solo confiar en la configuración.
 - **Kubernetes**: el `docker-compose.yml` actual es el punto de partida natural para migrar
   a manifiestos de Helm cuando el proyecto necesite escalar más allá de una sola máquina.
