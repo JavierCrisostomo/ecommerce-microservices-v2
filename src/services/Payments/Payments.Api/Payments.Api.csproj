@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Payments.Application\Payments.Application.csproj" />
     <ProjectReference Include="..\Payments.Infrastructure\Payments.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\shared\ECommerce.Observability\ECommerce.Observability.csproj" />
   </ItemGroup>
 
 </Project>

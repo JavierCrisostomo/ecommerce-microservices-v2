@@ -29,6 +29,16 @@ services:
       retries: 10
       start_period: 20s
 
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    container_name: ecommerce-jaeger
+    ports:
+      - "16686:16686" # UI
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
   identity-api:
     build:
       context: .
@@ -72,6 +82,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   inventory-api:
     build:
@@ -88,6 +100,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   payments-api:
     build:
@@ -104,6 +118,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   notifications-api:
     build:
@@ -120,6 +136,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   gateway-api:
     build:
@@ -138,6 +156,7 @@ services:
       - inventory-api
       - payments-api
       - notifications-api
+      - jaeger
 
 volumes:
   sqlserver-data:

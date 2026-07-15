@@ -1,3 +1,4 @@
+using ECommerce.Observability;
 using FluentValidation;
 using Inventory.Api.Contracts;
 using Inventory.Application;
@@ -10,6 +11,8 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.AddOpenTelemetryTracing("inventory-api");
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

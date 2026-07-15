@@ -107,6 +107,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Notifications.IntegrationTe
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Saga.IntegrationTests", "tests\IntegrationTests\Saga.IntegrationTests\Saga.IntegrationTests.csproj", "{83C7F2B6-2881-47CF-B543-7DFCDC4E93C1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ECommerce.Observability", "src\shared\ECommerce.Observability\ECommerce.Observability.csproj", "{63DEE00D-AB68-42E4-83F1-63EB84E7A94C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -597,6 +599,18 @@ Global
 		{83C7F2B6-2881-47CF-B543-7DFCDC4E93C1}.Release|x64.Build.0 = Release|Any CPU
 		{83C7F2B6-2881-47CF-B543-7DFCDC4E93C1}.Release|x86.ActiveCfg = Release|Any CPU
 		{83C7F2B6-2881-47CF-B543-7DFCDC4E93C1}.Release|x86.Build.0 = Release|Any CPU
+		{63DEE00D-AB68-42E4-83F1-63EB84E7A94C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{63DEE00D-AB68-42E4-83F1-63EB84E7A94C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{63DEE00D-AB68-42E4-83F1-63EB84E7A94C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{63DEE00D-AB68-42E4-83F1-63EB84E7A94C}.Debug|x64.Build.0 = Debug|Any CPU
+		{63DEE00D-AB68-42E4-83F1-63EB84E7A94C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{63DEE00D-AB68-42E4-83F1-63EB84E7A94C}.Debug|x86.Build.0 = Debug|Any CPU
+		{63DEE00D-AB68-42E4-83F1-63EB84E7A94C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{63DEE00D-AB68-42E4-83F1-63EB84E7A94C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{63DEE00D-AB68-42E4-83F1-63EB84E7A94C}.Release|x64.ActiveCfg = Release|Any CPU
+		{63DEE00D-AB68-42E4-83F1-63EB84E7A94C}.Release|x64.Build.0 = Release|Any CPU
+		{63DEE00D-AB68-42E4-83F1-63EB84E7A94C}.Release|x86.ActiveCfg = Release|Any CPU
+		{63DEE00D-AB68-42E4-83F1-63EB84E7A94C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -652,5 +666,6 @@ Global
 		{6285817D-9548-48FB-AA80-FBA86851AAEF} = {30785934-E017-5D9F-2777-3D61460A5281}
 		{6749FB40-849A-48D4-8CB0-BACF95394172} = {30785934-E017-5D9F-2777-3D61460A5281}
 		{83C7F2B6-2881-47CF-B543-7DFCDC4E93C1} = {30785934-E017-5D9F-2777-3D61460A5281}
+		{63DEE00D-AB68-42E4-83F1-63EB84E7A94C} = {C8E42992-5E42-0C2B-DBFE-AA848D06431C}
 	EndGlobalSection
 EndGlobal

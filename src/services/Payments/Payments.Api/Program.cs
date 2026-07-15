@@ -1,4 +1,5 @@
 using System.Text;
+using ECommerce.Observability;
 using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +11,8 @@ using Payments.Infrastructure.Gateways;
 using Payments.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.AddOpenTelemetryTracing("payments-api");
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

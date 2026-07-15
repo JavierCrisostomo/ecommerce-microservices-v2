@@ -1,3 +1,4 @@
+using ECommerce.Observability;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Notifications.Application;
@@ -6,6 +7,8 @@ using Notifications.Infrastructure;
 using Notifications.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.AddOpenTelemetryTracing("notifications-api");
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

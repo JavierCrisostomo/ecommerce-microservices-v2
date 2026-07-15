@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using ECommerce.Observability;
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -15,6 +16,8 @@ using Orders.Infrastructure;
 using Orders.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.AddOpenTelemetryTracing("orders-api");
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

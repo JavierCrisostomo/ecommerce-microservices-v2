@@ -1,4 +1,8 @@
+using ECommerce.Observability;
+
 var builder = WebApplication.CreateBuilder(args);
+
+builder.AddOpenTelemetryTracing("gateway-api", includeEfCore: false, includeMassTransit: false);
 
 builder.Services
     .AddReverseProxy()

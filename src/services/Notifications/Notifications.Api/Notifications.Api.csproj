@@ -18,6 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Notifications.Application\Notifications.Application.csproj" />
     <ProjectReference Include="..\Notifications.Infrastructure\Notifications.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\shared\ECommerce.Observability\ECommerce.Observability.csproj" />
   </ItemGroup>
 
 </Project>
