@@ -33,7 +33,7 @@ public class ProcessPaymentCommandHandlerTests
 
         await _handler.Handle(new ProcessPaymentCommand(orderId, 50m), CancellationToken.None);
 
-        _paymentGateway.Verify(g => g.Charge(It.IsAny<Guid>(), It.IsAny<decimal>()), Times.Never);
+        _paymentGateway.Verify(g => g.ChargeAsync(It.IsAny<Guid>(), It.IsAny<decimal>(), It.IsAny<CancellationToken>()), Times.Never);
         _paymentRepository.Verify(r => r.AddAsync(It.IsAny<Payment>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -41,7 +41,7 @@ public class ProcessPaymentCommandHandlerTests
     public async Task Handle_WhenGatewayApproves_CompletesPaymentAndPublishesPaymentCompleted()
     {
         var orderId = Guid.NewGuid();
-        _paymentGateway.Setup(g => g.Charge(orderId, 50m)).Returns(new PaymentGatewayResult(true, null));
+        _paymentGateway.Setup(g => g.ChargeAsync(orderId, 50m, It.IsAny<CancellationToken>())).ReturnsAsync(new PaymentGatewayResult(true, null));
 
         await _handler.Handle(new ProcessPaymentCommand(orderId, 50m), CancellationToken.None);
 
@@ -59,7 +59,7 @@ public class ProcessPaymentCommandHandlerTests
     public async Task Handle_WhenGatewayRejects_FailsPaymentAndPublishesPaymentFailed()
     {
         var orderId = Guid.NewGuid();
-        _paymentGateway.Setup(g => g.Charge(orderId, 1500m)).Returns(new PaymentGatewayResult(false, "Monto demasiado alto"));
+        _paymentGateway.Setup(g => g.ChargeAsync(orderId, 1500m, It.IsAny<CancellationToken>())).ReturnsAsync(new PaymentGatewayResult(false, "Monto demasiado alto"));
 
         await _handler.Handle(new ProcessPaymentCommand(orderId, 1500m), CancellationToken.None);
 

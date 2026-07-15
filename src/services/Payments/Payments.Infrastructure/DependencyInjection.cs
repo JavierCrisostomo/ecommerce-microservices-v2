@@ -21,7 +21,12 @@ public static class DependencyInjection
         services.AddScoped<IPaymentRepository, PaymentRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IEventPublisher, EventPublisher>();
-        services.AddSingleton<IPaymentGateway, SimulatedPaymentGateway>();
+
+        services.AddHttpClient<IPaymentGateway, HttpPaymentGateway>(client =>
+        {
+            client.BaseAddress = new Uri(configuration["PaymentGateway:BaseUrl"]!);
+        })
+        .AddStandardResilienceHandler();
 
         services.AddMassTransit(x =>
         {
@@ -36,6 +41,20 @@ public static class DependencyInjection
                 {
                     h.Username(configuration["RabbitMq:Username"]!);
                     h.Password(configuration["RabbitMq:Password"]!);
+                });
+
+                cfg.UseMessageRetry(r => r.Exponential(
+                    retryLimit: 3,
+                    minInterval: TimeSpan.FromMilliseconds(200),
+                    maxInterval: TimeSpan.FromSeconds(5),
+                    intervalDelta: TimeSpan.FromMilliseconds(200)));
+
+                cfg.UseCircuitBreaker(cb =>
+                {
+                    cb.TrackingPeriod = TimeSpan.FromMinutes(1);
+                    cb.TripThreshold = 15;
+                    cb.ActiveThreshold = 10;
+                    cb.ResetInterval = TimeSpan.FromMinutes(5);
                 });
 
                 // Nombre de cola explícito y prefijado por servicio (ver el comentario

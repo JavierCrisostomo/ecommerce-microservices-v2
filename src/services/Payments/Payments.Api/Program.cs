@@ -6,6 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 using Payments.Application;
 using Payments.Application.Payments.Queries.GetPaymentByOrderId;
 using Payments.Infrastructure;
+using Payments.Infrastructure.Gateways;
 using Payments.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -72,6 +73,21 @@ app.MapGet("/api/payments/order/{orderId:guid}", async (Guid orderId, ISender se
     var payment = await sender.Send(new GetPaymentByOrderIdQuery(orderId), cancellationToken);
     return payment is null ? Results.NotFound() : Results.Ok(payment);
 }).RequireAuthorization();
+
+// Simula el endpoint de una pasarela externa (Stripe en modo test, por
+// ejemplo): agrega latencia y una tasa de fallas transitorias para que el
+// cliente HTTP (HttpPaymentGateway) tenga un caso de falla real que Polly
+// pueda reintentar / cortar con el circuit breaker.
+var gateway = app.MapGroup("/internal/payment-gateway");
+gateway.MapPost("/charge", async (GatewayChargeRequest request) =>
+{
+    await Task.Delay(Random.Shared.Next(50, 250));
+    if (Random.Shared.NextDouble() < 0.2)
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+
+    var result = SimulatedGatewayBackend.Charge(request.OrderId, request.Amount);
+    return Results.Ok(new GatewayChargeResponse(result.Success, result.FailureReason));
+});
 
 app.Run();
 

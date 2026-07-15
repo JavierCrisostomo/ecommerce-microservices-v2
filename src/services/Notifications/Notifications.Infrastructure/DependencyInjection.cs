@@ -33,6 +33,20 @@ public static class DependencyInjection
                     h.Password(configuration["RabbitMq:Password"]!);
                 });
 
+                cfg.UseMessageRetry(r => r.Exponential(
+                    retryLimit: 3,
+                    minInterval: TimeSpan.FromMilliseconds(200),
+                    maxInterval: TimeSpan.FromSeconds(5),
+                    intervalDelta: TimeSpan.FromMilliseconds(200)));
+
+                cfg.UseCircuitBreaker(cb =>
+                {
+                    cb.TrackingPeriod = TimeSpan.FromMinutes(1);
+                    cb.TripThreshold = 15;
+                    cb.ActiveThreshold = 10;
+                    cb.ResetInterval = TimeSpan.FromMinutes(5);
+                });
+
                 // Nombres de cola explícitos y prefijados por servicio (ver el comentario
                 // equivalente en Orders.Infrastructure para el porqué).
                 cfg.ReceiveEndpoint("notifications-order-confirmed", e => e.ConfigureConsumer<OrderConfirmedConsumer>(context));

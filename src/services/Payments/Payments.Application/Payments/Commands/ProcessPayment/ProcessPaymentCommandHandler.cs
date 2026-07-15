@@ -20,7 +20,7 @@ public class ProcessPaymentCommandHandler(
             return;
 
         var payment = Payment.Create(request.OrderId, request.Amount);
-        var result = paymentGateway.Charge(request.OrderId, request.Amount);
+        var result = await paymentGateway.ChargeAsync(request.OrderId, request.Amount, cancellationToken);
 
         if (result.Success)
         {
