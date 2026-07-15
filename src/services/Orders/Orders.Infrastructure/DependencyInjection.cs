@@ -24,6 +24,12 @@ public static class DependencyInjection
 
         services.AddMassTransit(x =>
         {
+            x.AddEntityFrameworkOutbox<OrdersDbContext>(o =>
+            {
+                o.UseSqlServer();
+                o.UseBusOutbox();
+            });
+
             x.AddConsumer<PaymentCompletedConsumer>();
             x.AddConsumer<PaymentFailedConsumer>();
             x.AddConsumer<StockRejectedConsumer>();
@@ -41,9 +47,21 @@ public static class DependencyInjection
                 // de MassTransit sale del nombre de la clase del consumer, y como Orders e
                 // Inventory tienen cada uno un "PaymentFailedConsumer", sin esto terminan
                 // compitiendo por la misma cola en lugar de recibir cada uno su propia copia.
-                cfg.ReceiveEndpoint("orders-payment-completed", e => e.ConfigureConsumer<PaymentCompletedConsumer>(context));
-                cfg.ReceiveEndpoint("orders-payment-failed", e => e.ConfigureConsumer<PaymentFailedConsumer>(context));
-                cfg.ReceiveEndpoint("orders-stock-rejected", e => e.ConfigureConsumer<StockRejectedConsumer>(context));
+                cfg.ReceiveEndpoint("orders-payment-completed", e =>
+                {
+                    e.UseEntityFrameworkOutbox<OrdersDbContext>(context);
+                    e.ConfigureConsumer<PaymentCompletedConsumer>(context);
+                });
+                cfg.ReceiveEndpoint("orders-payment-failed", e =>
+                {
+                    e.UseEntityFrameworkOutbox<OrdersDbContext>(context);
+                    e.ConfigureConsumer<PaymentFailedConsumer>(context);
+                });
+                cfg.ReceiveEndpoint("orders-stock-rejected", e =>
+                {
+                    e.UseEntityFrameworkOutbox<OrdersDbContext>(context);
+                    e.ConfigureConsumer<StockRejectedConsumer>(context);
+                });
             });
         });
 

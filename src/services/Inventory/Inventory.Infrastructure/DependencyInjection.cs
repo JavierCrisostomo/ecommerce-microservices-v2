@@ -24,6 +24,8 @@ public static class DependencyInjection
 
         services.AddMassTransit(x =>
         {
+            x.AddEntityFrameworkOutbox<InventoryDbContext>(o => o.UseSqlServer());
+
             x.AddConsumer<OrderCreatedConsumer>();
             x.AddConsumer<PaymentFailedConsumer>();
 
@@ -38,8 +40,16 @@ public static class DependencyInjection
 
                 // Nombres de cola explícitos y prefijados por servicio (ver el comentario
                 // equivalente en Orders.Infrastructure para el porqué).
-                cfg.ReceiveEndpoint("inventory-order-created", e => e.ConfigureConsumer<OrderCreatedConsumer>(context));
-                cfg.ReceiveEndpoint("inventory-payment-failed", e => e.ConfigureConsumer<PaymentFailedConsumer>(context));
+                cfg.ReceiveEndpoint("inventory-order-created", e =>
+                {
+                    e.UseEntityFrameworkOutbox<InventoryDbContext>(context);
+                    e.ConfigureConsumer<OrderCreatedConsumer>(context);
+                });
+                cfg.ReceiveEndpoint("inventory-payment-failed", e =>
+                {
+                    e.UseEntityFrameworkOutbox<InventoryDbContext>(context);
+                    e.ConfigureConsumer<PaymentFailedConsumer>(context);
+                });
             });
         });
 

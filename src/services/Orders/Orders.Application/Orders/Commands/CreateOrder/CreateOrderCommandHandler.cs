@@ -22,12 +22,9 @@ public class CreateOrderCommandHandler(
         var order = Order.Create(request.CustomerId, newLines);
 
         await orderRepository.AddAsync(order, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        // La proyección de lectura se actualiza sincrónicamente, justo después de
-        // confirmar el write model; el resto de la saga sí viaja por RabbitMQ.
-        await orderReadStore.UpsertAsync(OrderSummaryMapper.ToSummary(order), cancellationToken);
-
+        // El evento se publica antes de SaveChanges para que el outbox de MassTransit
+        // lo bufferee y lo persista de forma atómica junto con el write model.
         await eventPublisher.PublishAsync(
             new OrderCreatedEvent(
                 Guid.NewGuid(),
@@ -37,6 +34,12 @@ public class CreateOrderCommandHandler(
                 order.Lines.Select(l => new ContractsOrderLine(l.ProductId, l.Quantity, l.UnitPrice)).ToList(),
                 order.TotalAmount),
             cancellationToken);
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // La proyección de lectura se actualiza sincrónicamente, justo después de
+        // confirmar el write model; el resto de la saga sí viaja por RabbitMQ.
+        await orderReadStore.UpsertAsync(OrderSummaryMapper.ToSummary(order), cancellationToken);
 
         return new CreateOrderResult(order.Id, order.TotalAmount, order.Status.ToString());
     }

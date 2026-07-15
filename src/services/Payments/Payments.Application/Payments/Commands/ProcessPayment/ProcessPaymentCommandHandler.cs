@@ -26,21 +26,23 @@ public class ProcessPaymentCommandHandler(
         {
             payment.Complete();
             await paymentRepository.AddAsync(payment, cancellationToken);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
 
             await eventPublisher.PublishAsync(
                 new PaymentCompleted(Guid.NewGuid(), DateTimeOffset.UtcNow, payment.OrderId, payment.Id, payment.Amount),
                 cancellationToken);
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
         }
         else
         {
             payment.Fail(result.FailureReason ?? "El pago fue rechazado.");
             await paymentRepository.AddAsync(payment, cancellationToken);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
 
             await eventPublisher.PublishAsync(
                 new PaymentFailed(Guid.NewGuid(), DateTimeOffset.UtcNow, payment.OrderId, payment.FailureReason!),
                 cancellationToken);
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
         }
     }
 }

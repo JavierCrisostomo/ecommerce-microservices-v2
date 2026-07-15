@@ -18,12 +18,13 @@ public class CancelOrderCommandHandler(
             return;
 
         order.Cancel(request.Reason);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-
-        await orderReadStore.UpsertAsync(OrderSummaryMapper.ToSummary(order), cancellationToken);
 
         await eventPublisher.PublishAsync(
             new OrderCancelled(Guid.NewGuid(), DateTimeOffset.UtcNow, order.Id, order.CustomerId, request.Reason),
             cancellationToken);
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        await orderReadStore.UpsertAsync(OrderSummaryMapper.ToSummary(order), cancellationToken);
     }
 }

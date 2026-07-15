@@ -1,4 +1,5 @@
 using Payments.Domain.Entities;
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
 namespace Payments.Infrastructure.Persistence;
@@ -10,5 +11,9 @@ public class PaymentsDbContext(DbContextOptions<PaymentsDbContext> options) : Db
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(PaymentsDbContext).Assembly);
+
+        modelBuilder.AddInboxStateEntity();
+        modelBuilder.AddOutboxMessageEntity();
+        modelBuilder.AddOutboxStateEntity();
     }
 }

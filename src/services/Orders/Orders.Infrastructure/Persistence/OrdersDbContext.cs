@@ -1,5 +1,6 @@
 using Orders.Domain.Entities;
 using Orders.Infrastructure.Persistence.ReadModels;
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
 namespace Orders.Infrastructure.Persistence;
@@ -13,5 +14,9 @@ public class OrdersDbContext(DbContextOptions<OrdersDbContext> options) : DbCont
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(OrdersDbContext).Assembly);
+
+        modelBuilder.AddInboxStateEntity();
+        modelBuilder.AddOutboxMessageEntity();
+        modelBuilder.AddOutboxStateEntity();
     }
 }

@@ -25,6 +25,8 @@ public static class DependencyInjection
 
         services.AddMassTransit(x =>
         {
+            x.AddEntityFrameworkOutbox<PaymentsDbContext>(o => o.UseSqlServer());
+
             x.AddConsumer<StockReservedConsumer>();
 
             x.UsingRabbitMq((context, cfg) =>
@@ -38,7 +40,11 @@ public static class DependencyInjection
 
                 // Nombre de cola explícito y prefijado por servicio (ver el comentario
                 // equivalente en Orders.Infrastructure para el porqué).
-                cfg.ReceiveEndpoint("payments-stock-reserved", e => e.ConfigureConsumer<StockReservedConsumer>(context));
+                cfg.ReceiveEndpoint("payments-stock-reserved", e =>
+                {
+                    e.UseEntityFrameworkOutbox<PaymentsDbContext>(context);
+                    e.ConfigureConsumer<StockReservedConsumer>(context);
+                });
             });
         });
 

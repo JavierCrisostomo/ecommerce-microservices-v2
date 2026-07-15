@@ -18,12 +18,13 @@ public class ConfirmOrderCommandHandler(
             return;
 
         order.Confirm();
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-
-        await orderReadStore.UpsertAsync(OrderSummaryMapper.ToSummary(order), cancellationToken);
 
         await eventPublisher.PublishAsync(
             new OrderConfirmed(Guid.NewGuid(), DateTimeOffset.UtcNow, order.Id, order.CustomerId),
             cancellationToken);
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        await orderReadStore.UpsertAsync(OrderSummaryMapper.ToSummary(order), cancellationToken);
     }
 }

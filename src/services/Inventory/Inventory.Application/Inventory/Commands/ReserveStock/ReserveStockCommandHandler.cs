@@ -47,10 +47,11 @@ public class ReserveStockCommandHandler(
             request.Lines.Select(l => new NewReservationLine(l.ProductId, l.Quantity)).ToList());
 
         await reservationRepository.AddAsync(reservation, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
 
         await eventPublisher.PublishAsync(
             new StockReserved(Guid.NewGuid(), DateTimeOffset.UtcNow, request.OrderId, request.TotalAmount),
             cancellationToken);
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 }
